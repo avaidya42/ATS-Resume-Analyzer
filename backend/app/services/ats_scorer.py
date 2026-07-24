@@ -26,6 +26,27 @@ WEIGHTS = {
 }
 
 
+def _project_content(project) -> list[str]:
+    """
+    Returns the lines of substantive content for a project, counted once.
+
+    resume_extractor.py (Gemini) frequently populates both `description`
+    and `bullet_points` with the *same* sentence for a one-line project —
+    there's nothing in the schema/prompt that says these should be
+    mutually exclusive. Scoring functions that previously did
+    `bullets += [description] + bullet_points` were silently double-
+    counting every such project. Here we prefer bullet_points when
+    present (it's the more granular/structured field) and only fall back
+    to description when bullet_points is empty, so each project's content
+    is counted exactly once regardless of which field(s) it landed in.
+    """
+    if project.bullet_points:
+        return list(project.bullet_points)
+    if project.description:
+        return [project.description]
+    return []
+
+
 def _score_structure(resume: ParsedResume) -> float:
     present = sum([
         bool(resume.contact.email),
@@ -84,8 +105,7 @@ def _first_word(text: str) -> str | None:
 
 def _score_action_verbs(resume: ParsedResume) -> float:
     bullets = [b for e in resume.experience for b in e.bullets]
-    bullets += [p.description for p in resume.projects if p.description]
-    bullets += [b for p in resume.projects for b in p.bullet_points]
+    bullets += [line for p in resume.projects for line in _project_content(p)]
     if not bullets:
         return 0.0
     strong = sum(1 for b in bullets if _first_word(b) in ACTION_VERBS)
@@ -94,8 +114,7 @@ def _score_action_verbs(resume: ParsedResume) -> float:
 
 def _score_quantified_achievements(resume: ParsedResume) -> float:
     bullets = [b for e in resume.experience for b in e.bullets]
-    bullets += [p.description for p in resume.projects if p.description]
-    bullets += [b for p in resume.projects for b in p.bullet_points]
+    bullets += [line for p in resume.projects for line in _project_content(p)]
     bullets += resume.achievements
     if not bullets:
         return 0.0

@@ -14,6 +14,7 @@ from app.services.resume_extractor import (
     GeminiQuotaExceededError,
     GeminiModelUnavailableError as ExtractorModelUnavailableError,
 )
+from app.services.ats_scorer import calculate_ats_score
 from app.services.jd_matcher import (
     match_resume_to_jd,
     JDMatchResult,
@@ -65,7 +66,16 @@ async def upload_resume(file: UploadFile = File(...)):
         #    the event loop to avoid blocking other requests.
         parsed_data = await run_in_threadpool(parse_resume, raw_text)
 
-        return parsed_data
+        # 4. Score the parsed resume for ATS compatibility. This is a pure
+        #    rule-based/regex scorer (no Gemini call), so no need to run it
+        #    in a threadpool — it's fast and non-blocking either way.
+        ats_result = calculate_ats_score(parsed_data)
+
+        # Wrapped so the frontend gets both `parsed` (ResumeDetails) and
+        # `ats` (ATSScore) instead of just the raw parsed resume. Previously
+        # this endpoint returned parsed_data directly, so result.ats was
+        # always undefined and ATSScore.jsx silently rendered a 0.
+        return {"parsed": parsed_data, "ats": ats_result}
 
     except HTTPException as http_exc:
         raise http_exc

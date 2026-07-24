@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 # We do not set `temperature` here: Gemini 3.x models ignore it already and
 # Google has said future releases will hard-error on it, so it's not worth
 # carrying. If determinism matters, rely on tight prompt wording instead.
-_GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash")
+_GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3.5")
 _GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 _client: Optional[genai.Client] = None
