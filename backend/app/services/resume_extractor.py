@@ -91,6 +91,29 @@ provided. Be exhaustive — do not skip entries. If a field isn't present in
 the resume, use an empty string or empty list as appropriate; never
 fabricate information that isn't in the source text.
 
+CRITICAL — verbatim text for bullets and descriptions: for every field that
+holds bullet-point or descriptive text (experience `bullets`, project
+`bullet_points` and `description`, `achievements`, etc.), copy the text
+EXACTLY as it appears in the source resume. Do NOT paraphrase, rewrite,
+summarize, reword, or add ANY words, phrases, or sentences that are not
+present in the source — including filler like extra lead-in verbs, closing
+"impact" sentences, or rephrased explanations. This is a literal
+copy-paste-into-structured-fields task for these fields, not a rewriting
+task. The ONLY allowed changes are: trimming leading/trailing whitespace,
+and removing a redundant bullet marker character (•, -, *) since the
+structure itself already represents that a field is a bullet.
+
+  Bad (invented wording — do NOT do this):
+    source:    "Built RESTful APIs using FastAPI."
+    extracted: "Drove the development of RESTful APIs using FastAPI to
+                 significantly improve backend reliability."
+  Good (verbatim):
+    source:    "Built RESTful APIs using FastAPI."
+    extracted: "Built RESTful APIs using FastAPI."
+
+Fields like `name`, `degree`, `institution` etc. should also be copied
+verbatim from the source, not normalized or reformatted.
+
 Raw resume text:
 ---
 {raw_text}

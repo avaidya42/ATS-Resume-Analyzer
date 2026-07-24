@@ -2,6 +2,28 @@
 
 Each sub-score is 0-100; the overall score is a weighted average.
 Weights are chosen to reflect what real ATS/recruiter screens emphasize.
+
+STABILITY NOTE: `action_verbs` and `quantified_achievements` used to read
+from ParsedResume's `bullets` / `bullet_points` fields, which are populated
+by Gemini (resume_extractor.py) — an LLM call with no determinism
+guarantee. In practice, Gemini would sometimes paraphrase or embellish
+bullet wording between identical uploads of the same PDF (e.g. prepending
+an extra verb, or appending an invented "impact" sentence not present in
+the source). Since these two scorers key off exact first-word matches and
+literal digit/percent patterns, even small wording drift flipped bullets
+in or out of scoring — producing a materially different overall ATS score
+for the exact same resume file from one upload to the next.
+
+Fix: these two scorers now read bullet lines directly out of
+`resume.raw_text` (extracted by PyMuPDF at upload time — a fixed,
+non-LLM, byte-for-byte deterministic transform of the PDF) via
+`_raw_bullet_lines()`, instead of trusting Gemini's rewritten copies. Given
+the same PDF, this always yields the same bullet list, so these two scores
+can no longer vary between identical uploads. The rest of the breakdown
+(structure, section_completeness, technical_skills) still reasonably
+depends on Gemini's *structural* parsing (which sections/skills exist),
+since that's a lower-variance judgment than verbatim wording and there's
+no raw-text equivalent for "did it find an education section."
 """
 import re
 from app.models.schemas import ATSResult, ParsedResume, ScoreBreakdown
@@ -25,26 +47,53 @@ WEIGHTS = {
     "readability": 0.10,
 }
 
+# Matches a line that starts (after optional leading whitespace) with a
+# common bullet-marker character, capturing the text after the marker.
+# This is what makes bullet extraction independent of Gemini's parsing —
+# it runs directly against the deterministic raw_text from PyMuPDF.
+_BULLET_LINE_RE = re.compile(r"^\s*[•\-\*\u2022\u25CF\u25AA\u25CB\u25E6]\s*(.+)$")
 
-def _project_content(project) -> list[str]:
-    """
-    Returns the lines of substantive content for a project, counted once.
+# Detects "Label: item, item, item" category-list lines (e.g. "Languages:
+# Python, Java, C", "Tools: Docker, Git, AWS"). These commonly appear
+# bullet-marked under a Skills-type section, but were never written as
+# accomplishment sentences — they shouldn't be scored for action
+# verbs/quantified impact.
+#
+# This matches on the SHAPE of the line (short label + colon + 2+
+# comma-separated items), not on specific section header text. That's
+# deliberate: resumes name this section differently ("Skills",
+# "Technical Skills & Tools", "Core Competencies", "Programming
+# Languages", etc.), and matching against a fixed list of header strings
+# would silently fail to help on any resume that phrases it differently.
+# Judging each line by its own structure works regardless of what the
+# surrounding section is called, or even whether it has a recognizable
+# header at all.
+_LABEL_LIST_LINE_RE = re.compile(
+    r"^[A-Za-z][A-Za-z /&\-]{1,30}:\s*"            # short label + colon
+    r"[A-Za-z0-9][\w.+#/\-]*(?: [\w.+#/\-]+)*"       # first item
+    r"(,\s*[A-Za-z0-9][\w.+#/\-]*(?: [\w.+#/\-]+)*){1,}\s*$"  # 2+ more items
+)
 
-    resume_extractor.py (Gemini) frequently populates both `description`
-    and `bullet_points` with the *same* sentence for a one-line project —
-    there's nothing in the schema/prompt that says these should be
-    mutually exclusive. Scoring functions that previously did
-    `bullets += [description] + bullet_points` were silently double-
-    counting every such project. Here we prefer bullet_points when
-    present (it's the more granular/structured field) and only fall back
-    to description when bullet_points is empty, so each project's content
-    is counted exactly once regardless of which field(s) it landed in.
+
+def _raw_bullet_lines(raw_text: str) -> list[str]:
     """
-    if project.bullet_points:
-        return list(project.bullet_points)
-    if project.description:
-        return [project.description]
-    return []
+    Extract bullet-marked lines from the raw resume text, verbatim, but
+    skip category-label lines (e.g. "Languages: Python, Java, C") — those
+    are lists, not accomplishment statements, and scoring them for action
+    verbs/quantified impact unfairly drags the score down regardless of
+    what the resume calls that section.
+    Deterministic for a given PDF — no LLM involved.
+    """
+    lines = []
+    for line in raw_text.splitlines():
+        match = _BULLET_LINE_RE.match(line)
+        if not match:
+            continue
+        content = match.group(1).strip()
+        if _LABEL_LIST_LINE_RE.match(content):
+            continue
+        lines.append(content)
+    return lines
 
 
 def _score_structure(resume: ParsedResume) -> float:
@@ -81,7 +130,7 @@ def _score_section_completeness(resume: ParsedResume) -> float:
 
 def _score_keyword_density(resume: ParsedResume) -> float:
     word_count = max(len(resume.raw_text.split()), 1)
-    keyword_count = len(resume.skills) + sum(len(e.bullets) for e in resume.experience)
+    keyword_count = len(resume.skills) + len(_raw_bullet_lines(resume.raw_text))
     density = keyword_count / word_count
     # ideal density band ~2%-8% of words tied to skills/impact bullets
     score = min(density / 0.05, 1.0) * 100
@@ -104,8 +153,7 @@ def _first_word(text: str) -> str | None:
 
 
 def _score_action_verbs(resume: ParsedResume) -> float:
-    bullets = [b for e in resume.experience for b in e.bullets]
-    bullets += [line for p in resume.projects for line in _project_content(p)]
+    bullets = _raw_bullet_lines(resume.raw_text)
     if not bullets:
         return 0.0
     strong = sum(1 for b in bullets if _first_word(b) in ACTION_VERBS)
@@ -113,9 +161,7 @@ def _score_action_verbs(resume: ParsedResume) -> float:
 
 
 def _score_quantified_achievements(resume: ParsedResume) -> float:
-    bullets = [b for e in resume.experience for b in e.bullets]
-    bullets += [line for p in resume.projects for line in _project_content(p)]
-    bullets += resume.achievements
+    bullets = _raw_bullet_lines(resume.raw_text)
     if not bullets:
         return 0.0
     number_re = re.compile(r"\d+%?|\$\d+|\d+x\b")

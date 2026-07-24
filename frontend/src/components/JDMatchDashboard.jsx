@@ -14,6 +14,14 @@
  *
  * Added: renders analysis_summary and missing_other_requirements from
  * jd_matcher.py's JDMatchResult (previously fetched but never displayed).
+ *
+ * Chip shape: switched from `rounded-full` (a true capsule) to `rounded-lg`
+ * (soft rectangle). Full capsules look fine for a single short word like
+ * "Python", but Gemini's skill/requirement strings are often multi-word
+ * phrases ("Experience with data visualization tools such as..."), and a
+ * capsule forces the curved caps to squeeze the first/last words at each
+ * end — that's what caused the pinched, overflowing text in the pill
+ * bubbles. A soft rectangle wraps multi-line text cleanly at any length.
  */
 
 import { useState } from 'react'
@@ -72,6 +80,11 @@ function MatchScoreGauge({ score }) {
   )
 }
 
+// Shared chip styling: soft rounded rectangle, wraps text normally,
+// consistent padding/line-height regardless of how long the phrase is.
+const CHIP_BASE_CLASSES =
+  'inline-block rounded-lg border px-3 py-2 text-xs font-mono leading-snug break-words'
+
 function SkillPillList({ title, skills, tone }) {
   const style =
     tone === 'matched'
@@ -88,11 +101,7 @@ function SkillPillList({ title, skills, tone }) {
       ) : (
         <div className="flex flex-wrap gap-2">
           {skills.map((skill) => (
-            <span
-              key={skill}
-              className="rounded-full border px-2.5 py-1 text-xs font-mono"
-              style={style}
-            >
+            <span key={skill} className={CHIP_BASE_CLASSES} style={style}>
               {skill}
             </span>
           ))}
@@ -114,7 +123,7 @@ function OtherRequirementsList({ requirements }) {
         {requirements.map((req) => (
           <span
             key={req}
-            className="rounded-full border border-border px-2.5 py-1 text-xs font-mono text-muted"
+            className={`${CHIP_BASE_CLASSES} border-border text-muted`}
           >
             {req}
           </span>
