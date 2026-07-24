@@ -4,8 +4,36 @@
 
 body {
   @apply bg-base text-slate-200 font-sans antialiased;
+  /* Subtle radial wash so the page isn't a flat black rectangle — purely
+     decorative, doesn't affect any component's own background/border. */
+  background-image:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(79, 209, 197, 0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 0%, rgba(242, 166, 90, 0.05), transparent 60%);
+  background-attachment: fixed;
 }
 
 ::selection {
   @apply bg-accent/30;
+}
+
+/* Dark-theme scrollbars — Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #232C3A transparent;
+}
+
+/* Dark-theme scrollbars — WebKit/Chromium (e.g. the JD textarea) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #232C3A;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #2E3B4E;
 }
