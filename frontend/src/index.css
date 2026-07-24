@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-base text-slate-200 font-sans antialiased;
+}
+
+::selection {
+  @apply bg-accent/30;
+}
